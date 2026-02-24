@@ -8,3 +8,5 @@ wait 3 minutes for router to fully boot
 
 Stock firmware downloaded from
 https://www.wavlink.com/en_us/firmware/details/46.html
+
+Stock & OpenWRT factory firmwares do not use a filename extension
