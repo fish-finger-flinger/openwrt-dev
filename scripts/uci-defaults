@@ -5,10 +5,10 @@
 #
 # Remove these apps from the default app list
 # odhcp6c odhcpd-ipv6only ppp ppp-mod-pppoe
-# 
+#
 # Add these apps
-# coreutils-base64 kmod-zram luci-app-attendedsysupgrade
-# luci-app-travelmate luci-app-https-dns-proxy
+# coreutils-base64 kmod-zram nano luci-app-attendedsysupgrade
+# uboot-envtools luci-app-travelmate luci-app-https-dns-proxy
 #
 # Add if rom > 8mb
 # luci-app-adblock-fast gawk grep sed coreutils-sort
@@ -22,14 +22,14 @@ ip_addr='192.168.10.1'
 ssid0=Cheese
 ssid1=Pickle
 pass=sandwich
-uplink_ssid=Rhubarb
-uplink_pass=pineapple
+uplink_ssid_2g=Custard uplink_pass_2g=pineapple
+uplink_ssid_5g=Rhubarb uplink_pass_5g=pineapple
 uplink_enc=psk2+ccmp
 
-# Set root password
-echo -e "$pass\n$pass\n"|passwd
+echo "Setting root password to $pass"
+echo -e "$pass\n$pass\n"|passwd >/dev/null 2>&1
 
-# Set ssh keys
+echo "Set ssh keys"
 cat <<EOF>/etc/dropbear/authorized_keys
 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC1XUUcJsFN6qAeCyvEiSjUF0nCB8GGBIRXNiBxs+YxW5dZrpb5rAmpnduL95qEX6egVRiwmsybI5nNMLSp9uaGk1rxh0Z9111aqGL8piLO50pNZW5vm6yiU1AJ1NdFq/Hi0iKqeq0U+rAptmPeZQlumspZBDiuQHJdblgeceAsYIgCvRVhQlU6Jh8+wQWm5yIm4xEbsF96k9YVcTI2yXyRbhRQVAgZIVy2u1P6hbNnZ2mB9/TX63M1OmmowSzvSH4oHI4eb9HHmq5tPyeRejp08OkN5fhPYYnl50fYJfYMuG0Cv3EefrCGKDGqzyf0KPytVAc3X/NUwRGl4fYMqRV9uKO6N9cUFN85a15O6ILf4ohik+0B4zjkdiI9rO9Ezz6bBkxePSgEPu/kAl3J/ClTMig6gwMONZAKknwQ5LZqSSzBKA8QVmaF4jeO3YWRD/Xq4G/hJGd42otHTVgpTC5XxlAHxM8T1TRqReviH3qXaB20hBwQp3ykMy80C3bW+qM7gYYJJm5No1uOTmk0nkYnvSVg3UaAiMIt6pRLgnjzM+jW6fHP7lMMSO/R0USEDtPrEqCiRdKp/uSXGsLsrDe8a6EZ5a4HaQCAYLn6N66FFCiQ7y8SFRRZ9FMAf0zI9tS7S0qvZmk5/oWvwboXb4i74Ml9UsHdx/YxkB78kxr2Ww== IG-88
 EOF
@@ -50,19 +50,19 @@ ghPIB7lOL+UD62uHrsqgOVDASLhLg3NqjQhwWCZj/1By1EgzDZ3McTqjOk9lIqy67Zcuf1f8coFO
 ydo4vJzPldov29zb60L+ckiFIIVe9Qj5i4/g2VCE8aqWgsg6xjEtTc/uW1/4nSsNjSP95SXzplXZ
 sju6xfCoiQ==
 EOF
-cat <<EOF | base64-d >/etc/dropbear/dropbear_ed25519_host_key
+cat <<EOF | base64 -d >/etc/dropbear/dropbear_ed25519_host_key
 AAAAC3NzaC1lZDI1NTE5AAAAQPOPuYnWDCIRVHdH+FWuyl4pGuKqFNPWSdp1qqRINS6R1K9QDB8r
 MI11GrgXM1Y5D/5bTVhGUNLWA1IEEsrC/Wg=
 EOF
 
-# Configure domain name resolution
+echo "Configure domain name resolution"
 rm /etc/resolv.conf; cat /tmp/resolv.conf>/etc/resolv.conf
 echo -e "nameserver 208.67.220.220\nnameserver 208.67.220.220\n">>/etc/resolv.conf
 uci del dhcp.@dnsmasq[0].noresolv
 uci set dhcp.@dnsmasq[0].resolvfile='/etc/resolv.conf'
 uci -q commit dhcp
 
-# Configure system settings
+echo "Configure system settings"
 uci set system.@system[0].hostname="$model"
 uci set system.@system[0].zram_size_mb='32'
 uci set system.@system[0].zram_comp_algo='zstd'
@@ -71,82 +71,86 @@ uci set system.@system[0].timezone='GMT0BST,M3.5.0/1,M10.5.0'
 uci set system.@system[0].clock_hourcycle='h23'
 uci -q commit system
 
-# Configure dns over https
+echo "Configure dns over https"
 uci set https-dns-proxy.@https-dns-proxy[0].resolver_url='https://dns.quad9.net/dns-query'
 uci set https-dns-proxy.@https-dns-proxy[1].resolver_url='https://cloudflare-dns.com/dns-query'
 uci -q commit https-dns-proxy
 
-# Configure upgrade settings
+echo "Configure upgrade settings"
 uci set attendedsysupgrade.client.login_check_for_upgrades='0'
 uci set attendedsysupgrade.client.advanced_mode='1'
 uci commit attendedsysupgrade
 
-# Config ethernet
+echo "Config ethernet"
 uci set network.lan.ipaddr="$ip_addr/24"
 uci set network.globals.packet_steering='1'
 uci set network.wwan=interface
 uci set network.wwan.proto='dhcp'
-uci del network.wan6
+[ "$(uci show network|grep wan6)" = "1" ] && uci del network.wan6
 uci commit network
 service network restart
 
-# Configure firewall
+echo "Configure firewall & remove ipv6 rules"
 uci del firewall.@zone[1].network
 uci add_list firewall.@zone[1].network='wan'
 uci add_list firewall.@zone[1].network='wwan'
 for r in "$(uci show firewall|grep ipv6|cut -d'.' -f1-2)"; do uci del "$r"; done
 uci -q commit firewall
 
-# Configure wifi settings
-for r in '0' '1'
+echo "Configure wifi settings"
+for r in $(uci show wireless|grep wifi-device|sed -e 's#wireless.radio\(.\).*#\1#g')
 do
-    if [ "$r" = "0" ]; then 
-        uci set wireless.radio0.channel="36"
-	    uci set wireless.radio0.htmode='VHT80'
-        uci set wireless.default_radio0.ssid="$ssid0"
+    if [ $(uci get wireless.radio$r.band) = "5g" ]; then
+        uci set wireless.radio$r.channel="36"
+        uci set wireless.radio$r.htmode='VHT80'
     fi
-    if [ "$r" = "1" ]; then 
-        uci set wireless.radio1.channel="6"
-	    uci set wireless.radio1.htmode='HT40'
-        uci set wireless.default_radio1.ssid="$ssid1"
+    if [ $(uci get wireless.radio$r.band) = "2g" ]; then
+        uci set wireless.radio$r.channel="6"
+        uci set wireless.radio$r.htmode='HT40'
     fi
-    uci set wireless.radio"$r".country="GB"
-    uci set wireless.default_radio"$r".encryption="psk2+ccmp"
-    uci set wireless.default_radio"$r".key="$pass"
-    uci set wireless.default_radio"$r".disabled="0"
-    uci set wireless.radio"$r".cell_density='0'
+    uci set wireless.radio$r.country="GB"
+    uci set wireless.default_radio$r.ssid=$(eval "echo \$ssid$r")
+    uci set wireless.default_radio$r.encryption="psk2+ccmp"
+    uci set wireless.default_radio$r.key="$pass"
+    uci set wireless.default_radio$r.disabled="0"
+    uci set wireless.radio$r.cell_density='0'
     uci -q commit wireless
     wifi reload
 done
 
-# Configure Travelmate
+echo "Configure Travelmate"
+if [ "$(uci get wireless.radio0.band)" = '5g' ]; then
+    uplink_ssid0=$uplink_ssid_5g; uplink_ssid1=$uplink_ssid_2g
+    uplink_pass0=$uplink_pass_5g; uplink_pass1=$uplink_pass_2g
+fi
+if [ "$(uci get wireless.radio0.band)" = '2g' ]; then
+    uplink_ssid0=$uplink_ssid_2g; uplink_ssid1=uplink_ssid_5g
+    uplink_pass0=$uplink_pass_2g; uplink_pass1=$uplink_pass_5g
+fi
 uci set travelmate.global.trm_enabled='1'
 uci set travelmate.global.trm_iface='wwan'
 uci add travelmate uplink
 uci set travelmate.@uplink[-1].enabled='1'
-uci set travelmate.@uplink[-1].device='radio0'
-uci set travelmate.@uplink[-1].ssid='Rhubarb'
-uci set travelmate.@uplink[-1].con_start_expiry='0'
-uci set travelmate.@uplink[-1].con_end_expiry='0'
-uci set wireless.trm_uplink1=wifi-iface
-uci set wireless.trm_uplink1.device='radio0'
-uci set wireless.trm_uplink1.mode='sta'
-uci set wireless.trm_uplink1.network='wwan'
-uci set wireless.trm_uplink1.ssid="$uplink_ssid"
-uci set wireless.trm_uplink1.encryption="$uplink_enc"
-uci set wireless.trm_uplink1.key="$uplink_pass"
-uci set wireless.trm_uplink1.disabled='0'
-uci -q commit wireless
-uci -q commit travelmate
+for r in $(uci show wireless|grep wifi-device|sed -e 's#wireless.radio\(.\).*#\1#g')
+do
+    uci set travelmate.@uplink[-1].device="radio$r"
+    uci set travelmate.@uplink[-1].ssid=$(eval "echo \$uplink_ssid$r")
+    uci set travelmate.@uplink[-1].con_start_expiry='0'
+    uci set travelmate.@uplink[-1].con_end_expiry='0'
+    uci -q commit travelmate
 
-# Configure adblock-fast
-#uci set adblock-fast.@file_url[10].enabled='1'
-#uci set adblock-fast.config.enabled='1'
-#service adblock-fast restart
+    uci set wireless.trm_uplink$r=wifi-iface
+    uci set wireless.trm_uplink$r.device=radio$r
+    uci set wireless.trm_uplink$r.mode='sta'
+    uci set wireless.trm_uplink$r.network='wwan'
+    uci set wireless.trm_uplink$r.ssid=$(eval "echo \$uplink_ssid$r")
+    uci set wireless.trm_uplink$r.encryption="$uplink_enc"
+    uci set wireless.trm_uplink$r.key=$(eval "echo \$uplink_pass$r")
+    uci set wireless.trm_uplink$r.disabled='0'
+    uci -q commit wireless
+done
 
 # Configure profile
-echo "alias nano='nano -l -c'">>/etc/profile
-
-# End of configuration
+[ $(grep -c 'alias nano' /etc/profile) = '0' ] && echo "alias nano='nano -l -c'">>/etc/profile
 
 echo "Configuration complete"
